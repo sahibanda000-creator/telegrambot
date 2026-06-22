@@ -1,42 +1,83 @@
+import os
 import telebot
 import random
 import sqlite3
 from datetime import datetime, timedelta
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# TOKEN HERE
-TOKEN = "8850736456:AAFavFv_tXs5d5tEMErpwkLI11tMuBATtNk"
-ADMIN_ID = 1476905507
+# =========================
+# CONFIG
+# =========================
 
-bot = telebot.TeleBot(8850736456:AAFavFv_tXs5d5tEMErpwkLI11tMuBATtNk)
+TOKEN = os.getenv("8850736456:AAFavFv_tXs5d5tEMErpwkLI11tMuBATtNk")
+ADMIN_ID = int(os.getenv("1476905507"))
 
-# DB
+bot = telebot.TeleBot(TOKEN)
+
+# =========================
+# DATABASE
+# =========================
+
 conn = sqlite3.connect("bot.db", check_same_thread=False)
 cursor = conn.cursor()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
-    user_id INTEGER,
+    user_id INTEGER PRIMARY KEY,
     join_date TEXT,
-    status TEXT,
-    expiry TEXT
+    expiry_date TEXT,
+    plan TEXT
 )
 """)
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS videos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     file_id TEXT
 )
 """)
 
 conn.commit()
 
-# GET USER
-def get_user(user_id):
-    cursor.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
+# =========================
+# HELPERS
+# =========================
+
+def user_exists(user_id):
+    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
     return cursor.fetchone()
 
-# RANDOM VIDEO
+def add_user(user_id):
+    join_date = datetime.now()
+    expiry_date = join_date + timedelta(days=7)
+
+    cursor.execute(
+        "INSERT OR REPLACE INTO users VALUES (?, ?, ?, ?)",
+        (
+            user_id,
+            str(join_date),
+            str(expiry_date),
+            "free"
+        )
+    )
+
+    conn.commit()
+
+def is_subscription_active(user_id):
+    cursor.execute(
+        "SELECT expiry_date FROM users WHERE user_id = ?",
+        (user_id,)
+    )
+
+    result = cursor.fetchone()
+
+    if not result:
+        return False
+
+    expiry_date = datetime.fromisoformat(result[0])
+
+    return datetime.now() <= expiry_date
+
 def get_random_video():
     cursor.execute("SELECT file_id FROM videos")
     videos = cursor.fetchall()
@@ -46,86 +87,175 @@ def get_random_video():
 
     return random.choice(videos)[0]
 
-# PAYMENT MESSAGE
-def pay(message):
+def payment_message(chat_id):
+
     text = """
-💰 PREMIUM PLANS
+💎 PREMIUM PLANS
 
-1 Day = ₹3
-1 Week = ₹19
-1 Month = ₹45
+• 1 Day = ₹3
+• 1 Week = ₹19
+• 1 Month = ₹45
 
-UPI ID:
-leeford1256@okicici
+💳 UPI ID:
+<code>leeford1256@okicici</code>
 
-Send payment screenshot to admin for approval.
+After payment tap:
+✅ I've Paid
 """
-    bot.send_message(message.chat.id, text)
 
+    markup = InlineKeyboardMarkup()
+
+    markup.add(
+        InlineKeyboardButton(
+            "✅ I've Paid",
+            callback_data="paid"
+        )
+    )
+
+    bot.send_message(
+        chat_id,
+        text,
+        parse_mode="HTML",
+        reply_markup=markup
+    )
+
+def send_random_video(chat_id):
+
+    video = get_random_video()
+
+    if not video:
+        bot.send_message(
+            chat_id,
+            "😕 No videos available right now."
+        )
+        return
+
+    markup = InlineKeyboardMarkup()
+
+    markup.add(
+        InlineKeyboardButton(
+            "🎬 Another Video",
+            callback_data="another_video"
+        )
+    )
+
+    bot.send_video(
+        chat_id,
+        video,
+        reply_markup=markup
+    )
+
+# =========================
 # START COMMAND
+# =========================
+
 @bot.message_handler(commands=['start'])
 def start(message):
 
     user_id = message.chat.id
-    user = get_user(user_id)
 
-    if not user:
+    if not user_exists(user_id):
+        add_user(user_id)
 
-        join_date = datetime.now()
-        expiry = join_date + timedelta(days=7)
+        welcome_text = """
+🔥 Welcome to the Video Bot!
 
-        cursor.execute("INSERT INTO users VALUES (?, ?, ?, ?)",
-                       (user_id, str(join_date), "free", str(expiry)))
-        conn.commit()
+Use /start anytime to get random videos 🎬
 
-        video = get_random_video()
-        if video:
-            bot.send_video(user_id, video)
+Tap "Another Video" for more content.
+"""
 
-        return
+        bot.send_message(user_id, welcome_text)
 
-    expiry = datetime.fromisoformat(user[3])
-
-    if datetime.now() <= expiry:
-
-        video = get_random_video()
-        if video:
-            bot.send_video(user_id, video)
-
+    if is_subscription_active(user_id):
+        send_random_video(user_id)
     else:
-        pay(message)
+        payment_message(user_id)
 
-# SAVE VIDEO (ADMIN OR CHANNEL)
-@bot.message_handler(content_types=['video'])
-def save_video(message):
+# =========================
+# ANOTHER VIDEO
+# =========================
 
-    if message.chat.id == ADMIN_ID:
-
-        file_id = message.video.file_id
-
-        cursor.execute("INSERT INTO videos VALUES (?)", (file_id,))
-        conn.commit()
-
-        bot.reply_to(message, "Video saved ✅")
-
-# ANOTHER VIDEO BUTTON
 @bot.callback_query_handler(func=lambda call: call.data == "another_video")
 def another_video(call):
 
-    video = get_random_video()
+    send_random_video(call.message.chat.id)
 
-    if video:
-        bot.send_video(call.message.chat.id, video)
+# =========================
+# PAYMENT CLAIM
+# =========================
 
-# BUTTONS
-def get_video_buttons():
-    markup = InlineKeyboardMarkup()
+@bot.callback_query_handler(func=lambda call: call.data == "paid")
+def paid(call):
 
-    markup.add(
-        InlineKeyboardButton("🎬 Another Video", callback_data="another_video")
+    user = call.from_user
+
+    text = f"""
+💰 New Payment Claim
+
+👤 User ID: {user.id}
+👤 Username: @{user.username}
+
+Please verify payment manually.
+"""
+
+    try:
+        bot.send_message(ADMIN_ID, text)
+
+        bot.answer_callback_query(
+            call.id,
+            "Payment request sent to admin ✅"
+        )
+
+    except:
+        bot.answer_callback_query(
+            call.id,
+            "Failed to notify admin ❌"
+        )
+
+# =========================
+# SAVE VIDEOS (ADMIN ONLY)
+# =========================
+
+@bot.message_handler(content_types=['video'])
+def save_video(message):
+
+    if message.chat.id != ADMIN_ID:
+        return
+
+    file_id = message.video.file_id
+
+    cursor.execute(
+        "INSERT INTO videos (file_id) VALUES (?)",
+        (file_id,)
     )
 
-    return markup
+    conn.commit()
 
-# POLLING
-bot.polling()
+    bot.reply_to(
+        message,
+        "✅ Video saved successfully"
+    )
+
+# =========================
+# BLOCK NORMAL USER MESSAGES
+# =========================
+
+@bot.message_handler(func=lambda message: True)
+def block_messages(message):
+
+    if message.chat.id == ADMIN_ID:
+        return
+
+    bot.reply_to(
+        message,
+        "❌ You can only use bot commands."
+    )
+
+# =========================
+# RUN BOT
+# =========================
+
+print("✅ Bot Started Successfully")
+
+bot.infinity_polling(skip_pending=True)
