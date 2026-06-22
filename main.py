@@ -10,7 +10,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 # =========================
 
 TOKEN = os.getenv("8850736456:AAFavFv_tXs5d5tEMErpwkLI11tMuBATtNk")
-ADMIN_ID = int(os.getenv("1476905507"))
+ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
 bot = telebot.TeleBot(TOKEN)
 
