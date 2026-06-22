@@ -5,10 +5,10 @@ from datetime import datetime, timedelta
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # TOKEN HERE
-TOKEN = "8850736456:AAFz5d9aPdJvzQaZ1RulcFCimdPdeMpQ4wc"
-ADMIN_ID = 8555836600
+TOKEN = "8850736456:AAFavFv_tXs5d5tEMErpwkLI11tMuBATtNk"
+ADMIN_ID = 1476905507
 
-bot = telebot.TeleBot(TOKEN)
+bot = telebot.TeleBot(8850736456:AAFavFv_tXs5d5tEMErpwkLI11tMuBATtNk)
 
 # DB
 conn = sqlite3.connect("bot.db", check_same_thread=False)
