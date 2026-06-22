@@ -9,8 +9,8 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 # CONFIG
 # =========================
 
-TOKEN = os.getenv("8850736456:AAFavFv_tXs5d5tEMErpwkLI11tMuBATtNk")
-ADMIN_ID_RAW = os.getenv("1476905507")
+TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID_RAW = os.getenv("ADMIN_ID")
 
 # Safe validation at startup
 if not TOKEN:
